@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Панель звонков (WebRTC)</title>
-    <!-- ПОДКЛЮЧЕНИЕ БИБЛИОТЕКИ TELNYX WEBRTC -->
     <script src="https://unpkg.com/@telnyx/webrtc@2.22.0/lib/bundle.js"></script>
     <style>
         body { background-color: #1e293b; color: white; font-family: sans-serif; display: flex; justify-content: center; padding-top: 50px; margin: 0; }
@@ -12,7 +11,7 @@
         .card { background: #0f172a; padding: 30px; border-radius: 15px; border: 1px solid #334155; margin-bottom: 20px; }
         h2 { text-align: center; color: #38bdf8; margin-top: 0; }
         input { width: 100%; padding: 12px; margin-bottom: 15px; border-radius: 8px; background: #1e293b; color: white; border: 1px solid #475569; box-sizing: border-box; }
-        button { width: 100%; padding: 15px; border-radius: 8px; background: #38bdf8; color: black; font-weight: bold; font-size: 16px; border: none; cursor: pointer; }
+        button { width: 100%; padding: 15px; border-radius: 8px; background: #38bdf8; color: black; font-weight: bold; font-size: 16px; border: none; cursor: pointer; transition: 0.3s; }
         button:hover { background: #0ea5e9; }
         button:disabled { background: #475569; cursor: not-allowed; }
         .status-box { margin-top: 20px; padding: 15px; background: #1e293b; border-radius: 8px; text-align: center; }
@@ -24,12 +23,13 @@
         table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; }
         th, td { padding: 10px; text-align: left; border-bottom: 1px solid #334155; }
         th { color: #38bdf8; }
-        audio { width: 100px; height: 30px; }
+        audio { width: 150px; height: 30px; }
         #call-panel, #history-panel { display: none; }
     </style>
 </head>
 <body>
     <div class="container">
+        <!-- Форма входа -->
         <div id="login-panel" class="card">
             <h2>ВХОД</h2>
             <input type="text" id="login" placeholder="Логин">
@@ -38,6 +38,7 @@
             <div id="login-error" class="error"></div>
         </div>
 
+        <!-- Приложение -->
         <div id="app" style="display: none;">
             <div class="tabs">
                 <button id="tab-call" class="active" onclick="switchTab('call')">Звонок</button>
@@ -50,9 +51,11 @@
                 <input type="text" id="to" placeholder="Номер клиента (+995...)">
                 <input type="text" id="from" list="numbers" placeholder="С какого номера звонить">
                 <datalist id="numbers"></datalist>
-                <button id="call-btn" onclick="toggleCall()">ПОЗВОНИТЬ</button>
+                
+                <button id="call-btn" onclick="toggleCall()" style="background: #475569;">Загрузка...</button>
+                
                 <div class="status-box">
-                    <div id="status" style="color: #94a3b8;">Загрузка WebRTC...</div>
+                    <div id="status" style="color: #94a3b8;">Подключение к серверу...</div>
                     <div id="timer" class="timer">00:00</div>
                 </div>
             </div>
@@ -68,10 +71,11 @@
     </div>
 
     <script>
-        let client;
-        let currentCall;
-        let timerInterval;
+        let client = null;
+        let currentCall = null;
+        let timerInterval = null;
         let seconds = 0;
+        let isClientReady = false;
 
         async function doLogin() {
             const login = document.getElementById('login').value;
@@ -92,43 +96,53 @@
         }
 
         async function initTelnyx() {
+            const btn = document.getElementById('call-btn');
+            const status = document.getElementById('status');
+
             try {
+                status.innerText = 'Получение токена...';
                 const res = await fetch('/api/token');
                 const data = await res.json();
                 
-                if (data.error) throw new Error(data.error);
+                if (!res.ok) throw new Error(data.error || 'Ошибка токена');
 
+                status.innerText = 'Подключение WebRTC...';
                 client = new TelnyxWebRTC.TelnyxRTC({ login_token: data.token });
                 
                 client.on('telnyx.ready', () => {
-                    document.getElementById('status').innerText = 'Готов к звонку (WebRTC)';
+                    isClientReady = true;
+                    status.innerText = 'Готов к звонку';
+                    btn.innerText = 'ПОЗВОНИТЬ';
+                    btn.style.background = '#38bdf8';
+                    btn.disabled = false;
                 });
 
                 client.on('telnyx.error', (err) => {
                     console.error(err);
-                    document.getElementById('status').innerText = 'Ошибка WebRTC. Проверьте консоль.';
+                    status.innerText = 'Ошибка WebRTC';
+                    resetCallUI();
                 });
 
                 client.on('telnyx.notification', (notification) => {
                     if (notification.type === 'callUpdate') {
                         const call = notification.call;
                         if (call.state === 'active') {
-                            document.getElementById('status').innerText = 'Звонок идет...';
+                            status.innerText = 'Звонок идет (разговор)...';
                             startTimer();
                         } else if (call.state === 'hangup' || call.state === 'destroy') {
-                            document.getElementById('status').innerText = 'Звонок завершен';
-                            stopTimer();
-                            currentCall = null;
-                            document.getElementById('call-btn').innerText = 'ПОЗВОНИТЬ';
-                            document.getElementById('call-btn').style.background = '#38bdf8';
+                            status.innerText = 'Звонок завершен';
+                            resetCallUI();
+                        } else if (call.state === 'ringing') {
+                            status.innerText = 'Дозвон...';
                         }
                     }
                 });
 
                 client.connect();
             } catch (e) {
-                console.error('Ошибка инициализации WebRTC', e);
-                document.getElementById('status').innerText = 'Ошибка: ' + e.message;
+                console.error('Ошибка инициализации', e);
+                status.innerText = 'Ошибка: ' + e.message;
+                btn.disabled = true;
             }
         }
 
@@ -142,8 +156,17 @@
         function toggleCall() {
             const btn = document.getElementById('call-btn');
             
+            // Если звонок уже идет - отменяем
             if (currentCall) {
-                currentCall.hangup();
+                try {
+                    currentCall.hangup();
+                } catch(e) { console.log(e); }
+                resetCallUI();
+                return;
+            }
+
+            if (!isClientReady) {
+                document.getElementById('status').innerText = 'Подождите, идет подключение...';
                 return;
             }
 
@@ -155,16 +178,30 @@
                 return; 
             }
 
-            document.getElementById('status').innerText = 'Дозвон...';
+            document.getElementById('status').innerText = 'Инициализация звонка...';
             btn.innerText = 'ОТМЕНИТЬ';
             btn.style.background = '#f87171';
 
-            currentCall = client.newCall({
-                destinationNumber: to,
-                callerNumber: from,
-                audio: true,
-                video: false
-            });
+            try {
+                currentCall = client.newCall({
+                    destinationNumber: to,
+                    callerNumber: from,
+                    audio: true,
+                    video: false
+                });
+            } catch (e) {
+                document.getElementById('status').innerText = 'Ошибка создания звонка';
+                resetCallUI();
+            }
+        }
+
+        function resetCallUI() {
+            stopTimer();
+            currentCall = null;
+            const btn = document.getElementById('call-btn');
+            btn.innerText = 'ПОЗВОНИТЬ';
+            btn.style.background = '#38bdf8';
+            document.getElementById('timer').innerText = '00:00';
         }
 
         function startTimer() {
