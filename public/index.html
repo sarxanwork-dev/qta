@@ -28,8 +28,10 @@
     </style>
 </head>
 <body>
+    <!-- Скрытый элемент для воспроизведения звука собеседника -->
+    <audio id="remoteMedia" autoplay="true"></audio>
+
     <div class="container">
-        <!-- Форма входа -->
         <div id="login-panel" class="card">
             <h2>ВХОД</h2>
             <input type="text" id="login" placeholder="Логин">
@@ -38,7 +40,6 @@
             <div id="login-error" class="error"></div>
         </div>
 
-        <!-- Приложение -->
         <div id="app" style="display: none;">
             <div class="tabs">
                 <button id="tab-call" class="active" onclick="switchTab('call')">Звонок</button>
@@ -48,7 +49,7 @@
 
             <div id="call-panel" class="card" style="display: block;">
                 <h2>ПАНЕЛЬ ЗВОНКОВ</h2>
-                <input type="text" id="to" placeholder="Номер клиента (+995...)">
+                <input type="text" id="to" placeholder="Номер клиента (+995...)" value="+995500333310">
                 <input type="text" id="from" list="numbers" placeholder="С какого номера звонить">
                 <datalist id="numbers"></datalist>
                 
@@ -107,7 +108,10 @@
                 if (!res.ok) throw new Error(data.error || 'Ошибка токена');
 
                 status.innerText = 'Подключение WebRTC...';
-                client = new TelnyxWebRTC.TelnyxRTC({ login_token: data.token });
+                client = new TelnyxWebRTC.TelnyxRTC({ login_token: data.token, debug: true, debugOutput: 'socket' });
+                
+                // Связываем аудиоплеер с клиентом для прослушивания
+                client.remoteElement = 'remoteMedia';
                 
                 client.on('telnyx.ready', () => {
                     isClientReady = true;
@@ -118,23 +122,38 @@
                 });
 
                 client.on('telnyx.error', (err) => {
-                    console.error(err);
-                    status.innerText = 'Ошибка WebRTC';
+                    console.error('Фатальная ошибка WebRTC:', err);
+                    status.innerText = 'Ошибка WebRTC. Проверьте консоль (F12).';
                     resetCallUI();
                 });
 
                 client.on('telnyx.notification', (notification) => {
+                    console.log('Получено уведомление:', notification);
                     if (notification.type === 'callUpdate') {
                         const call = notification.call;
-                        if (call.state === 'active') {
-                            status.innerText = 'Звонок идет (разговор)...';
-                            startTimer();
-                        } else if (call.state === 'hangup' || call.state === 'destroy') {
-                            status.innerText = 'Звонок завершен';
-                            resetCallUI();
-                        } else if (call.state === 'ringing') {
-                            status.innerText = 'Дозвон...';
+                        console.log('Состояние звонка:', call.state);
+                        switch (call.state) {
+                            case 'new': status.innerText = 'Создание звонка...'; break;
+                            case 'requesting': status.innerText = 'Отправка запроса...'; break;
+                            case 'ringing': status.innerText = 'Дозвон... (гудки)'; break;
+                            case 'active':
+                                status.innerText = 'Звонок идет (разговор)...';
+                                startTimer();
+                                break;
+                            case 'hangup':
+                            case 'destroy':
+                                status.innerText = 'Звонок завершен';
+                                resetCallUI();
+                                break;
                         }
+                    } else if (notification.type === 'userMediaError') {
+                        status.innerText = 'Ошибка: Нет доступа к микрофону!';
+                        console.error('Ошибка доступа к микрофону:', notification.error);
+                        resetCallUI();
+                    } else if (notification.type === 'peerConnectionFailedError') {
+                        status.innerText = 'Ошибка: Не удалось установить медиа-соединение!';
+                        console.error('Ошибка PeerConnection:', notification.error);
+                        resetCallUI();
                     }
                 });
 
@@ -156,7 +175,6 @@
         function toggleCall() {
             const btn = document.getElementById('call-btn');
             
-            // Если звонок уже идет - отменяем
             if (currentCall) {
                 try {
                     currentCall.hangup();
