@@ -14,6 +14,7 @@ let history = [];
 try { history = JSON.parse(fs.readFileSync(DB_FILE, 'utf8')); } catch (e) { history = []; }
 function saveHistory() { fs.writeFileSync(DB_FILE, JSON.stringify(history, null, 2)); }
 
+// 1. Логин
 app.post('/api/login', (req, res) => {
     const { login, password } = req.body;
     if (login === process.env.ADMIN_LOGIN && password === process.env.ADMIN_PASSWORD) {
@@ -23,23 +24,29 @@ app.post('/api/login', (req, res) => {
     }
 });
 
+// 2. Список номеров
 app.get('/api/numbers', (req, res) => {
     res.json([{ number: '+995500333310', label: 'Основной' }]);
 });
 
+// 3. Токен для WebRTC (чтобы браузер мог звонить)
 app.get('/api/token', async (req, res) => {
     try {
-        const response = await telnyx.telephony_credentials.createToken(process.env.TELNYX_CREDENTIAL_ID);
+        // Обрати внимание на camelCase: telephonyCredentials
+        const response = await telnyx.telephonyCredentials.createToken(process.env.TELNYX_CREDENTIAL_ID);
         res.json({ token: response.data.token });
     } catch (error) {
+        console.error('Ошибка получения токена:', error.message);
         res.status(500).json({ error: error.message });
     }
 });
 
+// 4. История звонков
 app.get('/api/history', (req, res) => {
     res.json(history);
 });
 
+// 5. Webhook от Telnyx (Запись и события)
 app.post('/api/webhooks/voice', async (req, res) => {
     try {
         const event = req.body.data;
@@ -69,7 +76,7 @@ app.post('/api/webhooks/voice', async (req, res) => {
                         channels: 'single',
                         format: 'mp3'
                     });
-                    console.log('Запись успешно запущена для звонка:', callControlId);
+                    console.log('Запись запущена для:', callControlId);
                 } catch (recError) {
                     console.error('Ошибка запуска записи:', recError.message);
                 }
