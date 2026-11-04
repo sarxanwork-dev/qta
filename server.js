@@ -39,7 +39,7 @@ app.get('/api/numbers', (req, res) => {
 app.post('/api/call', async (req, res) => {
     try {
         const { to, from } = req.body;
-        const response = await telnyx.calls.create({
+        const response = await telnyx.calls.dial({
             connection_id: process.env.TELNYX_CONNECTION_ID,
             to: to,
             from: from,
