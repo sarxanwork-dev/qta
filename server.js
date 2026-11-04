@@ -14,7 +14,7 @@ let history = [];
 try { history = JSON.parse(fs.readFileSync(DB_FILE, 'utf8')); } catch (e) { history = []; }
 function saveHistory() { fs.writeFileSync(DB_FILE, JSON.stringify(history, null, 2)); }
 
-// Логин
+// 1. Логин
 app.post('/api/login', (req, res) => {
     const { login, password } = req.body;
     if (login === process.env.ADMIN_LOGIN && password === process.env.ADMIN_PASSWORD) {
@@ -24,25 +24,26 @@ app.post('/api/login', (req, res) => {
     }
 });
 
-// Список номеров
+// 2. Список номеров
 app.get('/api/numbers', (req, res) => {
     res.json([{ number: '+995500333310', label: 'Основной' }]);
 });
 
-// ИСПРАВЛЕННЫЙ ТОКЕН ДЛЯ WEBRTC
+// 3. Токен для WebRTC (Исправлена ошибка извлечения токена)
 app.get('/api/token', async (req, res) => {
     try {
         const credentialId = process.env.TELNYX_CREDENTIAL_ID;
         if (!credentialId) {
-            return res.status(500).json({ error: 'Переменная TELNYX_CREDENTIAL_ID не задана в Render!' });
+            return res.status(500).json({ error: 'ID Credential не задан в Render!' });
         }
 
         const response = await telnyx.telephonyCredentials.createToken(credentialId);
         
-        // Безопасное извлечение токена
-        const token = (response && response.data) ? response.data.token : (response ? response.token : null);
-        
-        if (!token) {
+        // Универсальный способ достать токен (на случай разных версий SDK)
+        const token = response?.data?.token || response?.token || response;
+
+        if (!token || typeof token !== 'string') {
+            console.error('Неизвестный ответ от Telnyx:', response);
             return res.status(500).json({ error: 'Telnyx не вернул токен. Проверьте Credential ID.' });
         }
         
@@ -53,12 +54,12 @@ app.get('/api/token', async (req, res) => {
     }
 });
 
-// История
+// 4. История
 app.get('/api/history', (req, res) => {
     res.json(history);
 });
 
-// Webhook (Запись и события)
+// 5. Webhook от Telnyx
 app.post('/api/webhooks/voice', async (req, res) => {
     try {
         const event = req.body.data;
