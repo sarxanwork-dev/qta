@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Панель звонков</title>
+    <style>
+        body { background-color: #1e293b; color: white; font-family: sans-serif; display: flex; justify-content: center; padding-top: 50px; margin: 0; }
+        .container { width: 500px; }
+        .card { background: #0f172a; padding: 30px; border-radius: 15px; border: 1px solid #334155; margin-bottom: 20px; }
+        h2 { text-align: center; color: #38bdf8; margin-top: 0; }
+        input { width: 100%; padding: 12px; margin-bottom: 15px; border-radius: 8px; background: #1e293b; color: white; border: 1px solid #475569; box-sizing: border-box; }
+        button { width: 100%; padding: 15px; border-radius: 8px; background: #38bdf8; color: black; font-weight: bold; font-size: 16px; border: none; cursor: pointer; }
+        button:hover { background: #0ea5e9; }
+        button:disabled { background: #475569; cursor: not-allowed; }
+        .status-box { margin-top: 20px; padding: 15px; background: #1e293b; border-radius: 8px; text-align: center; }
+        .timer { font-size: 24px; color: #4ade80; font-weight: bold; margin-top: 5px; }
+        .error { color: #f87171; text-align: center; margin-top: 15px; font-size: 14px; }
+        .tabs { display: flex; gap: 10px; margin-bottom: 20px; }
+        .tabs button { background: transparent; color: #94a3b8; border: 1px solid #475569; }
+        .tabs button.active { background: #38bdf8; color: black; border-color: #38bdf8; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; }
+        th, td { padding: 10px; text-align: left; border-bottom: 1px solid #334155; }
+        th { color: #38bdf8; }
+        audio { width: 100px; height: 30px; }
+        #call-panel, #history-panel { display: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- ФОРМА ВХОДА -->
+        <div id="login-panel" class="card">
+            <h2>ВХОД</h2>
+            <input type="text" id="login" placeholder="Логин">
+            <input type="password" id="password" placeholder="Пароль">
+            <button onclick="doLogin()">ВОЙТИ</button>
+            <div id="login-error" class="error"></div>
+        </div>
+
+        <!-- ОСНОВНОЕ ПРИЛОЖЕНИЕ -->
+        <div id="app" style="display: none;">
+            <div class="tabs">
+                <button id="tab-call" class="active" onclick="switchTab('call')">Звонок</button>
+                <button id="tab-history" onclick="switchTab('history')">История</button>
+                <button onclick="location.reload()" style="margin-left: auto; width: auto; padding: 10px;">Выйти</button>
+            </div>
+
+            <div id="call-panel" class="card" style="display: block;">
+                <h2>ПАНЕЛЬ ЗВОНКОВ</h2>
+                <input type="text" id="to" placeholder="Номер клиента (+995...)">
+                <input type="text" id="from" list="numbers" placeholder="С какого номера звонить">
+                <datalist id="numbers"></datalist>
+                <button id="call-btn" onclick="makeCall()">ПОЗВОНИТЬ</button>
+                <div class="status-box">
+                    <div id="status" style="color: #94a3b8;">Готов к звонку</div>
+                    <div id="timer" class="timer">00:00</div>
+                </div>
+            </div>
+
+            <div id="history-panel" class="card">
+                <h2>ИСТОРИЯ ЗВОНКОВ</h2>
+                <table>
+                    <thead>
+                        <tr><th>Время</th><th>Откуда</th><th>Куда</th><th>Запись</th></tr>
+                    </thead>
+                    <tbody id="history-body"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let timerInterval;
+
+        async function doLogin() {
+            const login = document.getElementById('login').value;
+            const password = document.getElementById('password').value;
+            const res = await fetch('/api/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ login, password })
+            });
+            if (res.ok) {
+                document.getElementById('login-panel').style.display = 'none';
+                document.getElementById('app').style.display = 'block';
+                loadNumbers();
+            } else {
+                document.getElementById('login-error').innerText = 'Неверные данные!';
+            }
+        }
+
+        async function loadNumbers() {
+            const res = await fetch('/api/numbers');
+            const nums = await res.json();
+            const datalist = document.getElementById('numbers');
+            datalist.innerHTML = nums.map(n => `<option value="${n.number}">${n.label}</option>`).join('');
+        }
+
+        async function makeCall() {
+            const to = document.getElementById('to').value;
+            const from = document.getElementById('from').value;
+            const btn = document.getElementById('call-btn');
+            const status = document.getElementById('status');
+            const timer = document.getElementById('timer');
+
+            if (!to || !from) { status.innerText = 'Заполните оба номера!'; return; }
+
+            status.innerText = 'Дозвон...';
+            btn.disabled = true;
+            let seconds = 0;
+            timer.innerText = '00:00';
+
+            try {
+                const res = await fetch('/api/call', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ to, from })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    status.innerText = 'Звонок идет...';
+                    timerInterval = setInterval(() => {
+                        seconds++;
+                        timer.innerText = `${Math.floor(seconds/60).toString().padStart(2,'0')}:${(seconds%60).toString().padStart(2,'0')}`;
+                    }, 1000);
+                } else {
+                    status.innerText = 'Ошибка: ' + data.error;
+                    btn.disabled = false;
+                }
+            } catch (e) {
+                status.innerText = 'Ошибка сети';
+                btn.disabled = false;
+            }
+        }
+
+        async function switchTab(tab) {
+            document.getElementById('call-panel').style.display = tab === 'call' ? 'block' : 'none';
+            document.getElementById('history-panel').style.display = tab === 'history' ? 'block' : 'none';
+            document.getElementById('tab-call').className = tab === 'call' ? 'active' : '';
+            document.getElementById('tab-history').className = tab === 'history' ? 'active' : '';
+
+            if (tab === 'history') {
+                const res = await fetch('/api/history');
+                const data = await res.json();
+                document.getElementById('history-body').innerHTML = data.map(item => `
+                    <tr>
+                        <td>${item.time}</td>
+                        <td>${item.from}</td>
+                        <td>${item.to}</td>
+                        <td>${item.recording ? `<audio controls src="${item.recording}"></audio>` : 'Нет'}</td>
+                    </tr>
+                `).join('');
+            }
+        }
+    </script>
+</body>
+</html>
