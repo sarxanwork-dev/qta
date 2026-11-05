@@ -13,17 +13,12 @@ let history = [];
 try { history = JSON.parse(fs.readFileSync(DB_FILE, 'utf8')); } catch (e) { history = []; }
 function saveHistory() { fs.writeFileSync(DB_FILE, JSON.stringify(history, null, 2)); }
 
-// Функция форматирования времени в Тбилиси (UTC+4)
 function getTbilisiTime(isoString) {
     const date = isoString ? new Date(isoString) : new Date();
     return date.toLocaleString('ru-RU', {
         timeZone: 'Asia/Tbilisi',
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit'
+        day: '2-digit', month: '2-digit', year: 'numeric',
+        hour: '2-digit', minute: '2-digit', second: '2-digit'
     });
 }
 
@@ -63,58 +58,65 @@ app.post('/api/webhooks/voice', async (req, res) => {
     try {
         const event = req.body.data;
         if (!event || !event.payload) return res.sendStatus(200);
+        
         const payload = event.payload;
         const callControlId = payload.call_control_id;
-        console.log(`[WEBHOOK] ${event.event_type}`, payload);
+        
+        // Подробный лог для отладки
+        console.log(`[WEBHOOK] Тип: ${event.event_type}`);
+        console.log(`[WEBHOOK] Call Control ID: ${callControlId}`);
+        console.log(`[WEBHOOK] Payload:`, JSON.stringify(payload, null, 2));
 
-        // 1. Звонок инициирован
         if (event.event_type === 'call.initiated') {
             history.unshift({
                 time: getTbilisiTime(payload.start_time),
-                direction: payload.direction || 'outgoing', // 'incoming' или 'outgoing'
+                direction: payload.direction || 'outgoing',
                 from: payload.from,
                 to: payload.to,
                 status: 'Инициирован',
-                startTime: payload.start_time,
                 duration: null,
                 recording: null
             });
             saveHistory();
+            console.log('[HISTORY] Звонок добавлен в историю.');
         }
 
-        // 2. Звонок отвечен — запускаем запись
         if (event.event_type === 'call.answered') {
             if (history[0]) {
                 history[0].status = 'Отвечен';
-                history[0].answeredAt = getTbilisiTime(payload.answered_time);
                 saveHistory();
             }
+            
             if (callControlId) {
                 try {
-                    console.log(`[RECORDING] Запуск для ${callControlId}`);
-                    await telnyx.calls.actions.startRecording(callControlId, { channels: 'single', format: 'mp3' });
-                    console.log(`[RECORDING] Успешно запущено для ${callControlId}`);
+                    console.log(`[RECORDING] Попытка запуска для: ${callControlId}`);
+                    // Правильный вызов startRecording
+                    const recResponse = await telnyx.calls.actions.startRecording(callControlId, {
+                        channels: 'single',
+                        format: 'mp3'
+                    });
+                    console.log(`[RECORDING] Успешно запущено:`, recResponse.data);
                 } catch (recError) {
                     console.error('[RECORDING] Ошибка запуска:', recError.message);
                 }
+            } else {
+                console.error('[RECORDING] Нет callControlId в событии call.answered!');
             }
         }
 
-        // 3. Звонок завершен — сохраняем длительность
         if (event.event_type === 'call.hangup') {
             if (history[0]) {
                 history[0].status = 'Завершен';
-                history[0].endTime = getTbilisiTime(payload.end_time);
                 if (payload.start_time && payload.end_time) {
                     const start = new Date(payload.start_time).getTime();
                     const end = new Date(payload.end_time).getTime();
                     history[0].duration = Math.round((end - start) / 1000);
                 }
                 saveHistory();
+                console.log('[HISTORY] Звонок завершен, длительность обновлена.');
             }
         }
 
-        // 4. Запись сохранена — добавляем ссылку
         if (event.event_type === 'call.recording.saved') {
             const recordingUrl = payload.public_recording_urls?.mp3 || payload.recording_urls?.mp3 || null;
             if (recordingUrl && history[0]) {
@@ -125,7 +127,7 @@ app.post('/api/webhooks/voice', async (req, res) => {
         }
         res.sendStatus(200);
     } catch (e) {
-        console.error('[WEBHOOK] Ошибка:', e);
+        console.error('[WEBHOOK] Критическая ошибка:', e);
         res.sendStatus(500);
     }
 });
