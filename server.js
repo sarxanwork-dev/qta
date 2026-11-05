@@ -32,7 +32,7 @@ app.post('/api/login', (req, res) => {
 });
 
 app.get('/api/numbers', (req, res) => {
-    res.json([{ number: '+995500333310', label: 'Основной' }]);
+    res.json([{ number: '+995593796287', label: 'Основной' }]);
 });
 
 app.get('/api/token', async (req, res) => {
