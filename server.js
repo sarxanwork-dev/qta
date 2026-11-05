@@ -87,21 +87,7 @@ app.post('/api/webhooks/voice', async (req, res) => {
                 saveHistory();
             }
             
-            if (callControlId) {
-                try {
-                    console.log(`[RECORDING] Попытка запуска для: ${callControlId}`);
-                    // Правильный вызов startRecording
-                    const recResponse = await telnyx.calls.actions.startRecording(callControlId, {
-                        channels: 'single',
-                        format: 'mp3'
-                    });
-                    console.log(`[RECORDING] Успешно запущено:`, recResponse.data);
-                } catch (recError) {
-                    console.error('[RECORDING] Ошибка запуска:', recError.message);
-                }
-            } else {
-                console.error('[RECORDING] Нет callControlId в событии call.answered!');
-            }
+            
         }
 
         if (event.event_type === 'call.hangup') {
