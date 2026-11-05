@@ -6,9 +6,9 @@
     <title>Панель звонков (WebRTC)</title>
     <script src="https://unpkg.com/@telnyx/webrtc@2.22.0/lib/bundle.js"></script>
     <style>
-        body { background-color: #1e293b; color: white; font-family: sans-serif; display: flex; justify-content: center; padding-top: 50px; margin: 0; }
-        .container { width: 600px; }
-        .card { background: #0f172a; padding: 30px; border-radius: 15px; border: 1px solid #334155; margin-bottom: 20px; }
+        body { background-color: #1e293b; color: white; font-family: sans-serif; display: flex; justify-content: center; padding: 20px; margin: 0; box-sizing: border-box; }
+        .container { width: 100%; max-width: 500px; }
+        .card { background: #0f172a; padding: 20px; border-radius: 15px; border: 1px solid #334155; margin-bottom: 20px; }
         h2 { text-align: center; color: #38bdf8; margin-top: 0; }
         input { width: 100%; padding: 12px; margin-bottom: 15px; border-radius: 8px; background: #1e293b; color: white; border: 1px solid #475569; box-sizing: border-box; }
         button { width: 100%; padding: 15px; border-radius: 8px; background: #38bdf8; color: black; font-weight: bold; font-size: 16px; border: none; cursor: pointer; transition: 0.3s; }
@@ -17,15 +17,25 @@
         .status-box { margin-top: 20px; padding: 15px; background: #1e293b; border-radius: 8px; text-align: center; }
         .timer { font-size: 24px; color: #4ade80; font-weight: bold; margin-top: 5px; }
         .error { color: #f87171; text-align: center; margin-top: 15px; font-size: 14px; }
+        
         .tabs { display: flex; gap: 10px; margin-bottom: 20px; }
         .tabs button { background: transparent; color: #94a3b8; border: 1px solid #475569; }
         .tabs button.active { background: #38bdf8; color: black; border-color: #38bdf8; }
-        table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }
-        th, td { padding: 8px; text-align: left; border-bottom: 1px solid #334155; }
-        th { color: #38bdf8; }
-        .incoming { color: #4ade80; font-weight: bold; } /* Зеленый для входящих */
-        .outgoing { color: #fbbf24; font-weight: bold; } /* Желтый для исходящих */
-        audio { width: 130px; height: 30px; }
+        
+        /* Стили для карточек истории */
+        .history-list { display: flex; flex-direction: column; gap: 10px; }
+        .call-card { background: #1e293b; padding: 15px; border-radius: 10px; border: 1px solid #334155; display: flex; flex-direction: column; gap: 8px; }
+        .call-header { display: flex; justify-content: space-between; align-items: center; font-size: 14px; color: #94a3b8; }
+        .call-number { font-size: 18px; font-weight: bold; color: white; display: flex; align-items: center; gap: 8px; }
+        .call-details { display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: #cbd5e1; }
+        .call-actions { display: flex; gap: 10px; margin-top: 5px; }
+        .call-actions audio { flex-grow: 1; height: 35px; }
+        .btn-download { background: #38bdf8; color: black; text-decoration: none; padding: 0 15px; border-radius: 5px; font-weight: bold; display: flex; align-items: center; justify-content: center; font-size: 14px; }
+        .btn-download:hover { background: #0ea5e9; }
+        
+        .incoming { color: #4ade80; }
+        .outgoing { color: #fbbf24; }
+
         #call-panel, #history-panel { display: none; }
     </style>
 </head>
@@ -56,21 +66,12 @@
                     <div id="timer" class="timer">00:00</div>
                 </div>
             </div>
+            
             <div id="history-panel" class="card">
                 <h2>ИСТОРИЯ ЗВОНКОВ</h2>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Дата и Время (Тбилиси)</th>
-                            <th>Тип</th>
-                            <th>Откуда</th>
-                            <th>Куда</th>
-                            <th>Длит.</th>
-                            <th>Запись</th>
-                        </tr>
-                    </thead>
-                    <tbody id="history-body"></tbody>
-                </table>
+                <div class="history-list" id="history-list">
+                    <!-- Сюда будут добавляться карточки -->
+                </div>
             </div>
         </div>
     </div>
@@ -135,28 +136,44 @@
             
             if (tab === 'history') {
                 const res = await fetch('/api/history'); const data = await res.json();
+                const list = document.getElementById('history-list');
                 
-                // Если история пуста, показываем сообщение
                 if(data.length === 0) {
-                    document.getElementById('history-body').innerHTML = `<tr><td colspan="6" style="text-align:center;">История пока пуста</td></tr>`;
+                    list.innerHTML = `<p style="text-align:center; color:#94a3b8;">История пока пуста</p>`;
                     return;
                 }
 
-                document.getElementById('history-body').innerHTML = data.map(item => {
-                    // Определяем иконку и цвет
+                list.innerHTML = data.map(item => {
                     const isIncoming = item.direction === 'incoming';
-                    const dirText = isIncoming ? '📥 Входящий' : '📤 Исходящий';
+                    // Иконка и текст для исходящего/входящего
+                    const dirIcon = isIncoming ? '📥' : '📤';
+                    const dirText = isIncoming ? 'Входящий' : 'Исходящий';
                     const dirClass = isIncoming ? 'incoming' : 'outgoing';
+                    const arrow = isIncoming ? '↙️' : '↗️'; // Стрелочка направления
+
+                    // Кнопки, если есть запись
+                    const audioHtml = item.recording 
+                        ? `<div class="call-actions">
+                             <audio controls src="${item.recording}"></audio>
+                             <a href="${item.recording}" download="record_${item.from || item.to}.mp3" class="btn-download" title="Скачать запись">⬇️</a>
+                           </div>` 
+                        : `<div style="color: #f87171; font-size: 12px;">Записи нет</div>`;
 
                     return `
-                    <tr>
-                        <td>${item.time || '-'}</td>
-                        <td class="${dirClass}">${dirText}</td>
-                        <td>${item.from || '-'}</td>
-                        <td>${item.to || '-'}</td>
-                        <td>${item.duration ? item.duration + ' сек.' : '-'}</td>
-                        <td>${item.recording ? `<audio controls src="${item.recording}"></audio>` : 'Нет'}</td>
-                    </tr>
+                    <div class="call-card">
+                        <div class="call-header">
+                            <span class="${dirClass}">${dirIcon} ${dirText} ${arrow}</span>
+                            <span>${item.time || '-'}</span>
+                        </div>
+                        <div class="call-number">
+                            ${isIncoming ? 'От: ' : 'Кому: '} ${isIncoming ? item.from : item.to}
+                        </div>
+                        <div class="call-details">
+                            <span>Длительность: ${item.duration ? item.duration + ' сек.' : '-'}</span>
+                            <span>${item.status || ''}</span>
+                        </div>
+                        ${audioHtml}
+                    </div>
                 `}).join('');
             }
         }
