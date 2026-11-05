@@ -22,15 +22,20 @@
         .tabs button { background: transparent; color: #94a3b8; border: 1px solid #475569; }
         .tabs button.active { background: #38bdf8; color: black; border-color: #38bdf8; }
         
-        /* Стили для карточек истории */
+        /* Карточка истории */
         .history-list { display: flex; flex-direction: column; gap: 10px; }
         .call-card { background: #1e293b; padding: 15px; border-radius: 10px; border: 1px solid #334155; display: flex; flex-direction: column; gap: 8px; }
-        .call-header { display: flex; justify-content: space-between; align-items: center; font-size: 14px; color: #94a3b8; }
-        .call-number { font-size: 18px; font-weight: bold; color: white; display: flex; align-items: center; gap: 8px; }
-        .call-details { display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: #cbd5e1; }
-        .call-actions { display: flex; gap: 10px; margin-top: 5px; }
+        
+        /* Сначала крупный номер */
+        .call-number { font-size: 20px; font-weight: bold; color: white; }
+        
+        .call-header { display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: #94a3b8; }
+        .call-details { display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: #cbd5e1; margin-top: 5px; }
+        
+        .call-actions { display: flex; gap: 10px; margin-top: 10px; }
         .call-actions audio { flex-grow: 1; height: 35px; }
-        .btn-download { background: #38bdf8; color: black; text-decoration: none; padding: 0 15px; border-radius: 5px; font-weight: bold; display: flex; align-items: center; justify-content: center; font-size: 14px; }
+        
+        .btn-download { background: #38bdf8; color: black; text-decoration: none; padding: 0 15px; border-radius: 5px; font-weight: bold; display: flex; align-items: center; justify-content: center; font-size: 14px; cursor: pointer; border: none; }
         .btn-download:hover { background: #0ea5e9; }
         
         .incoming { color: #4ade80; }
@@ -69,9 +74,7 @@
             
             <div id="history-panel" class="card">
                 <h2>ИСТОРИЯ ЗВОНКОВ</h2>
-                <div class="history-list" id="history-list">
-                    <!-- Сюда будут добавляться карточки -->
-                </div>
+                <div class="history-list" id="history-list"></div>
             </div>
         </div>
     </div>
@@ -145,28 +148,30 @@
 
                 list.innerHTML = data.map(item => {
                     const isIncoming = item.direction === 'incoming';
-                    // Иконка и текст для исходящего/входящего
                     const dirIcon = isIncoming ? '📥' : '📤';
                     const dirText = isIncoming ? 'Входящий' : 'Исходящий';
                     const dirClass = isIncoming ? 'incoming' : 'outgoing';
-                    const arrow = isIncoming ? '↙️' : '↗️'; // Стрелочка направления
+                    const arrow = isIncoming ? '↙️' : '↗️';
+                    const phoneIcon = '📞';
 
-                    // Кнопки, если есть запись
+                    // Ссылка на наш сервер для скачивания (обходит блокировку)
+                    const downloadUrl = `/api/download?url=${encodeURIComponent(item.recording)}`;
+
                     const audioHtml = item.recording 
                         ? `<div class="call-actions">
                              <audio controls src="${item.recording}"></audio>
-                             <a href="${item.recording}" download="record_${item.from || item.to}.mp3" class="btn-download" title="Скачать запись">⬇️</a>
+                             <a href="${downloadUrl}" class="btn-download" title="Скачать запись">⬇️ Скачать</a>
                            </div>` 
                         : `<div style="color: #f87171; font-size: 12px;">Записи нет</div>`;
 
                     return `
                     <div class="call-card">
-                        <div class="call-header">
-                            <span class="${dirClass}">${dirIcon} ${dirText} ${arrow}</span>
-                            <span>${item.time || '-'}</span>
-                        </div>
                         <div class="call-number">
-                            ${isIncoming ? 'От: ' : 'Кому: '} ${isIncoming ? item.from : item.to}
+                            ${isIncoming ? item.from : item.to}
+                        </div>
+                        <div class="call-header">
+                            <span class="${dirClass}">${phoneIcon} ${dirText} ${arrow}</span>
+                            <span>${item.time || '-'}</span>
                         </div>
                         <div class="call-details">
                             <span>Длительность: ${item.duration ? item.duration + ' сек.' : '-'}</span>
